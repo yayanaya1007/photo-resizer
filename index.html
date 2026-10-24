@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>사진 한꺼번에 줄이기</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f5f7fb;
+        color: #182235;
+        font:
+          16px system-ui,
+          -apple-system,
+          'Malgun Gothic',
+          sans-serif;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: auto;
+        padding: 34px 18px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+      }
+      p {
+        color: #627086;
+        line-height: 1.6;
+      }
+      .panel {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        padding: 24px;
+        margin-top: 20px;
+        box-shadow: 0 8px 28px #1020500a;
+      }
+      .drop {
+        border: 2px dashed #93b4e5;
+        background: #f3f8ff;
+        border-radius: 16px;
+        padding: 34px 16px;
+        text-align: center;
+        cursor: pointer;
+      }
+      .drop.over {
+        background: #e0efff;
+      }
+      input[type='file'] {
+        display: none;
+      }
+      .hint {
+        font-size: 13px;
+        color: #64748b;
+      }
+      .settings {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+      label {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .field input,
+      .field select {
+        min-width: 0;
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 17px;
+        background: white;
+      }
+      .field select {
+        width: 86px;
+      }
+      .btn {
+        background: #2467dc;
+        color: white;
+        border: 0;
+        border-radius: 11px;
+        padding: 13px 18px;
+        font-weight: 700;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .btn:disabled {
+        background: #a8b8d2;
+        cursor: default;
+      }
+      .btn.secondary {
+        background: #e8eff9;
+        color: #24466f;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 18px;
+      }
+      .item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        border-top: 1px solid #edf0f5;
+        padding: 13px 0;
+        word-break: break-all;
+      }
+      .item small {
+        color: #64748b;
+      }
+      .status {
+        font-weight: 600;
+        color: #245cc0;
+      }
+      .error {
+        color: #b42318;
+      }
+      .muted {
+        color: #64748b;
+      }
+      a {
+        color: #145bd4;
+      }
+      progress {
+        width: 100%;
+        height: 14px;
+        margin-top: 16px;
+      }
+      .note {
+        background: #f4f7fc;
+        padding: 13px;
+        border-radius: 10px;
+        font-size: 13px;
+        color: #53647c;
+      }
+      @media (max-width: 600px) {
+        .settings {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 25px;
+        }
+        .panel {
+          padding: 18px;
+        }
+        .wrap {
+          padding: 23px 13px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>📷 사진 한꺼번에 줄이기</h1>
+      <p>
+        가로 크기만 입력하세요. 세로는 원본 비율에 맞춰 자동 조절됩니다. 여러
+        장을 한 번에 줄여 ZIP으로 받으세요.
+      </p>
+      <section class="panel">
+        <div class="drop" id="drop" role="button" tabindex="0">
+          <div style="font-size: 38px">🖼️</div>
+          <strong>사진을 여기에 끌어놓거나 눌러서 선택</strong>
+          <div class="hint">JPG · PNG · WEBP, 여러 장 동시 선택</div>
+        </div>
+        <input
+          id="files"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+        />
+        <div id="count" class="muted" style="margin-top: 12px">
+          선택된 사진이 없습니다.
+        </div>
+      </section>
+      <section class="panel">
+        <h2 style="margin-top: 0; font-size: 20px">크기와 용량 설정</h2>
+        <div class="settings">
+          <div>
+            <label for="width">가로 크기 (px)</label>
+            <div class="field">
+              <input
+                id="width"
+                type="number"
+                min="1"
+                max="12000"
+                value="1200"
+                inputmode="numeric"
+              /><span>px</span>
+            </div>
+            <div class="hint">세로는 사진 비율에 따라 자동 계산</div>
+          </div>
+          <div>
+            <label for="target">사진 한 장당 목표 용량</label>
+            <div class="field">
+              <input
+                id="target"
+                type="number"
+                min="1"
+                value="500"
+                inputmode="numeric"
+              /><select id="unit">
+                <option value="1024">KB</option>
+                <option value="1048576">MB</option>
+              </select>
+            </div>
+            <div class="hint">화질을 조정하고 필요하면 크기도 더 줄입니다.</div>
+          </div>
+        </div>
+        <p class="note">
+          원본 사진은 변경되지 않습니다. 목표 용량은 사진 종류에 따라 정확하게
+          맞추지 못할 수도 있습니다. 결과는 JPG로 저장됩니다. 투명한 부분은
+          흰색으로 처리됩니다.
+        </p>
+        <div class="actions">
+          <button class="btn" id="process">사진 한꺼번에 줄이기</button
+          ><button class="btn secondary" id="clear">사진 목록 비우기</button>
+        </div>
+        <progress id="progress" value="0" max="1" hidden></progress>
+        <div
+          id="message"
+          class="status"
+          aria-live="polite"
+          style="margin-top: 12px"
+        ></div>
+      </section>
+      <section class="panel">
+        <h2 style="margin-top: 0; font-size: 20px">사진 목록 및 결과</h2>
+        <div id="results" class="muted">사진을 선택하면 목록이 표시됩니다.</div>
+        <div class="actions">
+          <button class="btn" id="download" disabled>
+            줄인 사진 ZIP 다운로드
+          </button>
+        </div>
+      </section>
+      <p class="hint">
+        사진 처리는 사용 중인 기기의 브라우저 안에서 진행됩니다. 사진이 서버로
+        전송되지 않습니다.      </p>
+    </main>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+      const $ = id => document.getElementById(id);
+      let originals = [],
+        output = [];
+      const pretty = n =>
+        n >= 1048576
+          ? (n / 1048576).toFixed(2) + ' MB'
+          : (n / 1024).toFixed(0) + ' KB';
+      function safe(s) {
+        return s.replace(/[^a-zA-Z0-9가-힣._()-]/g, '_');
+      }
+      function list() {
+        $('count').textContent = originals.length + '장 선택됨';
+        $('results').replaceChildren();
+        if (!originals.length) {
+          $('results').textContent = '사진을 선택하면 목록이 표시됩니다.';
+          return;
+        }
+        originals.forEach((file, i) => {
+          const row = document.createElement('div');
+          row.className = 'item';
+          const a = document.createElement('span');
+          a.textContent = i + 1 + '. ' + file.name;
+          const b = document.createElement('small');
+          b.textContent = pretty(file.size);
+          row.append(a, b);
+          $('results').append(row);
+        });
+      }
+      function addFiles(input) {
+        const incoming = Array.from(input).filter(f =>
+          ['image/jpeg', 'image/png', 'image/webp'].includes(f.type)
+        );
+        originals.push(...incoming);
+        output = [];
+        $('download').disabled = true;
+        $('message').textContent = '';
+        list();
+      }
+      $('drop').onclick = () => $('files').click();
+      $('drop').onkeydown = e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          $('files').click();
+        }
+      };
+      $('files').onchange = e => {
+        addFiles(e.target.files);
+        e.target.value = '';
+      };
+      $('drop').ondragover = e => {
+        e.preventDefault();
+        $('drop').classList.add('over');
+      };
+      $('drop').ondragleave = () => $('drop').classList.remove('over');
+      $('drop').ondrop = e => {
+        e.preventDefault();
+        $('drop').classList.remove('over');
+        addFiles(e.dataTransfer.files);
+      };
+      $('clear').onclick = () => {
+        originals = [];
+        output = [];
+        $('download').disabled = true;
+        $('message').textContent = '';
+        list();
+      };
+      async function loadImage(file) {
+        const url = URL.createObjectURL(file);
+        try {
+          const im = new Image();
+          im.src = url;
+          await im.decode();
+          return im;
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      function jpeg(canvas, q) {
+        return new Promise((ok, fail) =>
+          canvas.toBlob(
+            b => (b ? ok(b) : fail(new Error('변환 실패'))),
+            'image/jpeg',
+            q
+          )
+        );
+      }
+      async function shrink(file, maxWidth, limit) {
+        const im = await loadImage(file);
+        let w = Math.min(im.naturalWidth, maxWidth),
+          h = Math.max(1, Math.round((im.naturalHeight * w) / im.naturalWidth));
+        const canvas = document.createElement('canvas'),
+          ctx = canvas.getContext('2d');
+        let best = null;
+        for (let step = 0; step < 12; step++) {
+          canvas.width = w;
+          canvas.height = h;
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(im, 0, 0, w, h);
+          let lo = 0.3,
+            hi = 0.94;
+          let candidate = await jpeg(canvas, lo);
+          if (candidate.size <= limit) {
+            best = candidate;
+            for (let j = 0; j < 8; j++) {
+              const mid = (lo + hi) / 2,
+                b = await jpeg(canvas, mid);
+              if (b.size <= limit) {
+                best = b;
+                lo = mid;
+              } else {
+                hi = mid;
+              }
+            }
+            break;
+          }
+          if (!best || candidate.size < best.size) best = candidate;
+          if (w <= 160 || h <= 160) break;
+          w = Math.max(1, Math.round(w * 0.84));
+          h = Math.max(1, Math.round(h * 0.84));
+        }
+        return { blob: best, w, h, met: best.size <= limit };
+      }
+      $('process').onclick = async () => {
+        if (!originals.length) {
+          $('message').textContent = '사진을 먼저 선택해 주세요.';
+          return;
+        }
+        const w = Number($('width').value),
+          t = Number($('target').value) * Number($('unit').value);
+        if (
+          !Number.isInteger(w) ||
+          w < 1 ||
+          w > 12000 ||
+          !Number.isFinite(t) ||
+          t < 1024
+        ) {
+          $('message').textContent =
+            '가로 크기와 목표 용량을 올바르게 입력해 주세요.';
+          return;
+        }
+        $('process').disabled = true;
+        $('download').disabled = true;
+        $('progress').hidden = false;
+        $('progress').max = originals.length;
+        $('progress').value = 0;
+        output = [];
+        $('results').replaceChildren();
+        for (let i = 0; i < originals.length; i++) {
+          const f = originals[i],
+            row = document.createElement('div');
+          row.className = 'item';
+          const title = document.createElement('span');
+          title.textContent = f.name;
+          const stats = document.createElement('small');
+          stats.textContent = '처리 중';
+          row.append(title, stats);
+          $('results').append(row);
+          try {
+            const result = await shrink(f, w, t);
+            const basename = f.name.replace(/\.[^.]+$/, '');
+            output.push({
+              name: safe(basename) + '_' + (i + 1) + '.jpg',
+              blob: result.blob,
+            });
+            stats.textContent =
+              pretty(f.size) +
+              ' → ' +
+              pretty(result.blob.size) +
+              ' / ' +
+              result.w +
+              '×' +
+              result.h +
+              (result.met ? '' : ' (목표 용량 초과)');
+          } catch (e) {
+            stats.textContent = '변환 실패';
+            stats.className = 'error';
+          }
+          $('progress').value = i + 1;
+          $('message').textContent =
+            i + 1 + ' / ' + originals.length + '장 처리 완료';
+        }
+        $('process').disabled = false;
+        $('download').disabled = !output.length;
+        $('message').textContent =
+          output.length + '장 변환 완료. ZIP 다운로드를 누르세요.';
+      };
+      $('download').onclick = async () => {
+        if (!output.length) return;
+        if (typeof JSZip === 'undefined') {
+          $('message').textContent =
+            'ZIP 기능을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.';
+          return;
+        }
+        $('download').disabled = true;
+        $('message').textContent = 'ZIP 파일을 만드는 중입니다.';
+        try {
+          const zip = new JSZip();
+          output.forEach(x => zip.file(x.name, x.blob));
+          const blob = await zip.generateAsync({ type: 'blob' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'resized-photos.zip';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          $('message').textContent = 'ZIP 다운로드가 시작되었습니다.';
+        } catch (e) {
+          $('message').textContent = 'ZIP 만들기에 실패했습니다.';
+        } finally {
+          $('download').disabled = false;
+        }
+      };
+    </script>
+  </body>
+</html>
