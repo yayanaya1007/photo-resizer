@@ -65,6 +65,13 @@
       .filename-setting {
         margin-top: 18px;
       }
+      .dimension-preview {
+        margin-top: 8px;
+        max-height: 140px;
+        overflow-y: auto;
+        white-space: pre-line;
+        line-height: 1.55;
+      }
       label {
         display: block;
         font-weight: 700;
@@ -204,6 +211,9 @@
               /><span>px</span>
             </div>
             <div class="hint">세로는 사진 비율에 따라 자동 계산</div>
+            <div id="dimensionsPreview" class="hint dimension-preview" aria-live="polite">
+              사진을 선택하면 예상 크기가 표시됩니다.
+            </div>
           </div>
           <div>
             <label for="target">사진 한 장당 목표 용량</label>
@@ -272,6 +282,9 @@
       const $ = id => document.getElementById(id);
       let originals = [],
         output = [];
+      const dimensionsByFile = new Map(),
+        dimensionLoads = new Map(),
+        failedDimensions = new Set();
       const pretty = n =>
         n >= 1048576
           ? (n / 1048576).toFixed(2) + ' MB'
@@ -304,6 +317,50 @@
           $('results').append(row);
         });
       }
+      function updateDimensionsPreview() {
+        const preview = $('dimensionsPreview');
+        const maxWidth = Number($('width').value);
+        if (!originals.length) {
+          preview.textContent = '사진을 선택하면 예상 크기가 표시됩니다.';
+          return;
+        }
+        if (!Number.isInteger(maxWidth) || maxWidth < 1 || maxWidth > 12000) {
+          preview.textContent = '올바른 가로 크기를 입력해 주세요.';
+          return;
+        }
+        preview.textContent = originals
+          .map(file => {
+            const dimensions = dimensionsByFile.get(file);
+            if (!dimensions) {
+              if (failedDimensions.has(file)) {
+                return file.name + ': 크기를 읽을 수 없습니다';
+              }
+              if (!dimensionLoads.has(file)) {
+                const load = loadImage(file)
+                  .then(image => {
+                    dimensionsByFile.set(file, {
+                      width: image.naturalWidth,
+                      height: image.naturalHeight,
+                    });
+                  })
+                  .catch(() => failedDimensions.add(file))
+                  .finally(() => {
+                    dimensionLoads.delete(file);
+                    if (originals.includes(file)) updateDimensionsPreview();
+                  });
+                dimensionLoads.set(file, load);
+              }
+              return file.name + ': 크기 확인 중…';
+            }
+            const width = Math.min(dimensions.width, maxWidth);
+            const height = Math.max(
+              1,
+              Math.round((dimensions.height * width) / dimensions.width)
+            );
+            return file.name + ': ' + width + ' × ' + height + ' px';
+          })
+          .join('\n');
+      }
       function addFiles(input) {
         const incoming = Array.from(input).filter(f =>
           ['image/jpeg', 'image/png', 'image/webp'].includes(f.type)
@@ -313,7 +370,9 @@
         $('download').disabled = true;
         $('message').textContent = '';
         list();
+        updateDimensionsPreview();
       }
+      $('width').oninput = updateDimensionsPreview;
       $('drop').onclick = () => $('files').click();
       $('drop').onkeydown = e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -338,9 +397,12 @@
       $('clear').onclick = () => {
         originals = [];
         output = [];
+        dimensionsByFile.clear();
+        failedDimensions.clear();
         $('download').disabled = true;
         $('message').textContent = '';
         list();
+        updateDimensionsPreview();
       };
       async function loadImage(file) {
         const url = URL.createObjectURL(file);
