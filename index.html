@@ -72,6 +72,23 @@
         white-space: pre-line;
         line-height: 1.55;
       }
+      .crop-editor[hidden] {
+        display: none;
+      }
+      #cropCanvas {
+        display: block;
+        width: 100%;
+        max-width: 520px;
+        height: auto;
+        margin-top: 12px;
+        border-radius: 12px;
+        background: #e7edf5;
+        touch-action: none;
+        cursor: grab;
+      }
+      #cropCanvas:active {
+        cursor: grabbing;
+      }
       label {
         display: block;
         font-weight: 700;
@@ -233,6 +250,17 @@
           </div>
         </div>
         <div class="filename-setting">
+          <label for="outputAspect">저장할 사진 비율</label>
+          <div class="field">
+            <select id="outputAspect" style="width: 100%">
+              <option value="original">원본 비율 유지</option>
+              <option value="4:3" selected>가로 4:3</option>
+              <option value="16:9">가로 16:9</option>
+            </select>
+          </div>
+          <div class="hint">가로 비율을 고르면 사진마다 자를 위치를 조정할 수 있습니다.</div>
+        </div>
+        <div class="filename-setting">
           <label for="filenamePrefix">저장할 파일 이름 (선택)</label>
           <div class="field">
             <input
@@ -264,6 +292,17 @@
           style="margin-top: 12px"
         ></div>
       </section>
+      <section class="panel crop-editor" id="cropPanel" hidden>
+        <h2 style="margin-top: 0; font-size: 20px">남길 부분 선택</h2>
+        <label for="cropFile">사진 선택</label>
+        <div class="field">
+          <select id="cropFile" style="width: 100%"></select>
+        </div>
+        <canvas id="cropCanvas" width="520" height="360" aria-label="자를 영역을 끌어서 조정"></canvas>
+        <div class="hint" style="margin-top: 8px">
+          어두운 부분은 잘립니다. 밝은 프레임을 끌어 남길 부분을 선택하세요.
+        </div>
+      </section>
       <section class="panel">
         <h2 style="margin-top: 0; font-size: 20px">사진 목록 및 결과</h2>
         <div id="results" class="muted">사진을 선택하면 목록이 표시됩니다.</div>
@@ -284,7 +323,14 @@
         output = [];
       const dimensionsByFile = new Map(),
         dimensionLoads = new Map(),
-        failedDimensions = new Set();
+        failedDimensions = new Set(),
+        cropRects = new Map(),
+        cropImages = new Map();
+      let activeCropImage = null,
+        activeCropFile = null,
+        cropLayout = null,
+        cropDrag = null,
+        cropRenderId = 0;
       const pretty = n =>
         n >= 1048576
           ? (n / 1048576).toFixed(2) + ' MB'
@@ -298,6 +344,33 @@
         const base = safe(prefix || sourceBase).replace(/^[._-]+|[._-]+$/g, '') || 'photo';
         const number = String(index + 1).padStart(3, '0');
         return base + '_' + number + '.jpg';
+      }
+      function selectedAspect() {
+        const value = $('outputAspect').value;
+        if (value === '4:3') return 4 / 3;
+        if (value === '16:9') return 16 / 9;
+        return null;
+      }
+      function defaultCropRect(width, height, ratio) {
+        if (!ratio) return { x: 0, y: 0, width, height };
+        let cropWidth = width,
+          cropHeight = height;
+        if (width / height > ratio) cropWidth = Math.round(height * ratio);
+        else cropHeight = Math.round(width / ratio);
+        return {
+          x: Math.round((width - cropWidth) / 2),
+          y: Math.round((height - cropHeight) / 2),
+          width: cropWidth,
+          height: cropHeight,
+        };
+      }
+      function cropRectFor(file, width, height) {
+        const ratio = selectedAspect();
+        const saved = cropRects.get(file);
+        if (saved && saved.ratio === ratio) return saved;
+        const rect = { ...defaultCropRect(width, height, ratio), ratio };
+        cropRects.set(file, rect);
+        return rect;
       }
       function list() {
         $('count').textContent = originals.length + '장 선택됨';
@@ -352,15 +425,129 @@
               }
               return file.name + ': 크기 확인 중…';
             }
-            const width = Math.min(dimensions.width, maxWidth);
-            const height = Math.max(
-              1,
-              Math.round((dimensions.height * width) / dimensions.width)
+            const crop = defaultCropRect(
+              dimensions.width,
+              dimensions.height,
+              selectedAspect()
             );
+            const width = Math.min(crop.width, maxWidth);
+            const height = Math.max(1, Math.round((crop.height * width) / crop.width));
             return file.name + ': ' + width + ' × ' + height + ' px';
           })
           .join('\n');
       }
+      function drawCropPreview() {
+        const canvas = $('cropCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#e7edf5';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (!activeCropImage || !activeCropFile) return;
+        const imageWidth = activeCropImage.naturalWidth;
+        const imageHeight = activeCropImage.naturalHeight;
+        const scale = Math.min(canvas.width / imageWidth, canvas.height / imageHeight);
+        const drawWidth = imageWidth * scale;
+        const drawHeight = imageHeight * scale;
+        const imageX = (canvas.width - drawWidth) / 2;
+        const imageY = (canvas.height - drawHeight) / 2;
+        ctx.drawImage(activeCropImage, imageX, imageY, drawWidth, drawHeight);
+        const crop = cropRectFor(activeCropFile, imageWidth, imageHeight);
+        const cropX = imageX + crop.x * scale;
+        const cropY = imageY + crop.y * scale;
+        const cropWidth = crop.width * scale;
+        const cropHeight = crop.height * scale;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+        ctx.fillRect(imageX, imageY, drawWidth, cropY - imageY);
+        ctx.fillRect(imageX, cropY + cropHeight, drawWidth, imageY + drawHeight - cropY - cropHeight);
+        ctx.fillRect(imageX, cropY, cropX - imageX, cropHeight);
+        ctx.fillRect(cropX + cropWidth, cropY, imageX + drawWidth - cropX - cropWidth, cropHeight);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(cropX, cropY, cropWidth, cropHeight);
+        cropLayout = { scale, imageX, imageY, drawWidth, drawHeight };
+      }
+      async function showCropPhoto() {
+        const token = ++cropRenderId;
+        const file = originals[Number($('cropFile').value)];
+        activeCropFile = file || null;
+        activeCropImage = null;
+        if (!file) {
+          drawCropPreview();
+          return;
+        }
+        try {
+          let image = cropImages.get(file);
+          if (!image) {
+            image = await loadImage(file);
+            cropImages.set(file, image);
+          }
+          if (token !== cropRenderId) return;
+          activeCropImage = image;
+          cropRectFor(file, image.naturalWidth, image.naturalHeight);
+          drawCropPreview();
+        } catch (error) {
+          if (token === cropRenderId) activeCropImage = null;
+          drawCropPreview();
+        }
+      }
+      function refreshCropEditor() {
+        const panel = $('cropPanel');
+        const select = $('cropFile');
+        const currentIndex = Number(select.value);
+        panel.hidden = !selectedAspect() || !originals.length;
+        select.replaceChildren();
+        originals.forEach((file, index) => {
+          const option = document.createElement('option');
+          option.value = String(index);
+          option.textContent = (index + 1) + '. ' + file.name;
+          select.append(option);
+        });
+        if (originals.length) {
+          select.value = String(Math.min(currentIndex || 0, originals.length - 1));
+        }
+        showCropPhoto();
+      }
+      $('cropFile').onchange = showCropPhoto;
+      $('outputAspect').onchange = () => {
+        refreshCropEditor();
+        updateDimensionsPreview();
+      };
+      $('cropCanvas').onpointerdown = event => {
+        if (!activeCropImage || !activeCropFile || !cropLayout) return;
+        const crop = cropRectFor(
+          activeCropFile,
+          activeCropImage.naturalWidth,
+          activeCropImage.naturalHeight
+        );
+        cropDrag = {
+          file: activeCropFile,
+          pointerX: event.clientX,
+          pointerY: event.clientY,
+          cropX: crop.x,
+          cropY: crop.y,
+        };
+        $('cropCanvas').setPointerCapture(event.pointerId);
+      };
+      $('cropCanvas').onpointermove = event => {
+        if (!cropDrag || !cropLayout || cropDrag.file !== activeCropFile) return;
+        const bounds = $('cropCanvas').getBoundingClientRect();
+        const displayScale = $('cropCanvas').width / bounds.width;
+        const dx = ((event.clientX - cropDrag.pointerX) * displayScale) / cropLayout.scale;
+        const dy = ((event.clientY - cropDrag.pointerY) * displayScale) / cropLayout.scale;
+        const crop = cropRects.get(activeCropFile);
+        crop.x = Math.max(
+          0,
+          Math.min(activeCropImage.naturalWidth - crop.width, cropDrag.cropX + dx)
+        );
+        crop.y = Math.max(
+          0,
+          Math.min(activeCropImage.naturalHeight - crop.height, cropDrag.cropY + dy)
+        );
+        drawCropPreview();
+      };
+      $('cropCanvas').onpointerup = $('cropCanvas').onpointercancel = () => {
+        cropDrag = null;
+      };
       function addFiles(input) {
         const incoming = Array.from(input).filter(f =>
           ['image/jpeg', 'image/png', 'image/webp'].includes(f.type)
@@ -370,6 +557,7 @@
         $('download').disabled = true;
         $('message').textContent = '';
         list();
+        refreshCropEditor();
         updateDimensionsPreview();
       }
       $('width').oninput = updateDimensionsPreview;
@@ -399,9 +587,12 @@
         output = [];
         dimensionsByFile.clear();
         failedDimensions.clear();
+        cropRects.clear();
+        cropImages.clear();
         $('download').disabled = true;
         $('message').textContent = '';
         list();
+        refreshCropEditor();
         updateDimensionsPreview();
       };
       async function loadImage(file) {
@@ -426,8 +617,9 @@
       }
       async function shrink(file, maxWidth, limit) {
         const im = await loadImage(file);
-        let w = Math.min(im.naturalWidth, maxWidth),
-          h = Math.max(1, Math.round((im.naturalHeight * w) / im.naturalWidth));
+        const crop = cropRectFor(file, im.naturalWidth, im.naturalHeight);
+        let w = Math.min(crop.width, maxWidth),
+          h = Math.max(1, Math.round((crop.height * w) / crop.width));
         const canvas = document.createElement('canvas'),
           ctx = canvas.getContext('2d');
         let best = null;
@@ -436,7 +628,17 @@
           canvas.height = h;
           ctx.fillStyle = '#fff';
           ctx.fillRect(0, 0, w, h);
-          ctx.drawImage(im, 0, 0, w, h);
+          ctx.drawImage(
+            im,
+            crop.x,
+            crop.y,
+            crop.width,
+            crop.height,
+            0,
+            0,
+            w,
+            h
+          );
           let lo = 0.3,
             hi = 0.94;
           let candidate = await jpeg(canvas, lo);
