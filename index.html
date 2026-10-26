@@ -62,6 +62,9 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 18px;
       }
+      .filename-setting {
+        margin-top: 18px;
+      }
       label {
         display: block;
         font-weight: 700;
@@ -219,6 +222,21 @@
             <div class="hint">화질을 조정하고 필요하면 크기도 더 줄입니다.</div>
           </div>
         </div>
+        <div class="filename-setting">
+          <label for="filenamePrefix">저장할 파일 이름 (선택)</label>
+          <div class="field">
+            <input
+              id="filenamePrefix"
+              type="text"
+              maxlength="80"
+              placeholder="예: 여행사진"
+              autocomplete="off"
+            />
+          </div>
+          <div class="hint">
+            입력하면 여행사진_001.jpg처럼 일괄 변경됩니다. 비워두면 원본 이름 뒤에 순번을 붙입니다.
+          </div>
+        </div>
         <p class="note">
           원본 사진은 변경되지 않습니다. 목표 용량은 사진 종류에 따라 정확하게
           맞추지 못할 수도 있습니다. 결과는 JPG로 저장됩니다. 투명한 부분은
@@ -260,6 +278,13 @@
           : (n / 1024).toFixed(0) + ' KB';
       function safe(s) {
         return s.replace(/[^a-zA-Z0-9가-힣._()-]/g, '_');
+      }
+      function outputName(file, index) {
+        const prefix = $('filenamePrefix').value.trim();
+        const sourceBase = file.name.replace(/\.[^.]+$/, '');
+        const base = safe(prefix || sourceBase).replace(/^[._-]+|[._-]+$/g, '') || 'photo';
+        const number = String(index + 1).padStart(3, '0');
+        return base + '_' + number + '.jpg';
       }
       function list() {
         $('count').textContent = originals.length + '장 선택됨';
@@ -411,11 +436,12 @@
           $('results').append(row);
           try {
             const result = await shrink(f, w, t);
-            const basename = f.name.replace(/\.[^.]+$/, '');
+            const name = outputName(f, i);
             output.push({
-              name: safe(basename) + '_' + (i + 1) + '.jpg',
+              name,
               blob: result.blob,
             });
+            title.textContent = name;
             stats.textContent =
               pretty(f.size) +
               ' → ' +
