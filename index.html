@@ -72,6 +72,30 @@
         white-space: pre-line;
         line-height: 1.55;
       }
+      .setting-card {
+        padding: 16px;
+        border: 1px solid;
+        border-left-width: 6px;
+        border-radius: 14px;
+      }
+      .dimension-card {
+        color: #1e3a8a;
+        background: #eff6ff;
+        border-color: #bfdbfe;
+        border-left-color: #2563eb;
+      }
+      .dimension-card label {
+        color: #1d4ed8;
+      }
+      .file-size-card {
+        color: #7c2d12;
+        background: #fff7ed;
+        border-color: #fed7aa;
+        border-left-color: #ea580c;
+      }
+      .file-size-card label {
+        color: #c2410c;
+      }
       .crop-editor[hidden] {
         display: none;
       }
@@ -213,10 +237,10 @@
         </div>
       </section>
       <section class="panel">
-        <h2 style="margin-top: 0; font-size: 20px">크기와 용량 설정</h2>
+        <h2 style="margin-top: 0; font-size: 20px">사진 크기와 파일 용량 설정</h2>
         <div class="settings">
-          <div>
-            <label for="width">가로 크기 (px)</label>
+          <div class="setting-card dimension-card">
+            <label for="width">📐 사진 크기 · 픽셀</label>
             <div class="field">
               <input
                 id="width"
@@ -232,8 +256,8 @@
               사진을 선택하면 예상 크기가 표시됩니다.
             </div>
           </div>
-          <div>
-            <label for="target">사진 한 장당 목표 용량</label>
+          <div class="setting-card file-size-card">
+            <label for="target">💾 파일 용량 목표 · 사진 1장당</label>
             <div class="field">
               <input
                 id="target"
@@ -246,7 +270,9 @@
                 <option value="1048576">MB</option>
               </select>
             </div>
-            <div class="hint">화질을 조정하고 필요하면 크기도 더 줄입니다.</div>
+            <div class="hint">
+              저장될 JPG 파일의 KB/MB 크기입니다. 가로×세로 픽셀 치수와는 다른 설정이며, 목표에 맞춰 화질과 크기를 조정합니다.
+            </div>
           </div>
         </div>
         <div class="filename-setting">
