@@ -172,6 +172,16 @@
       .item small {
         color: #64748b;
       }
+      .result-details {
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+      }
+      .item .photo-download {
+        flex-shrink: 0;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
       .status {
         font-weight: 600;
         color: #245cc0;
@@ -218,7 +228,7 @@
       <h1>📷 사진 한꺼번에 줄이기</h1>
       <p>
         가로 크기만 입력하세요. 세로는 원본 비율에 맞춰 자동 조절됩니다. 여러
-        장을 한 번에 줄여 ZIP으로 받으세요.
+        장을 한 번에 줄여 한 장씩 저장하거나 ZIP으로 받으세요.
       </p>
       <section class="panel">
         <div class="drop" id="drop" role="button" tabindex="0">
@@ -339,10 +349,11 @@
       </section>
       <section class="panel">
         <h2 style="margin-top: 0; font-size: 20px">사진 목록 및 결과</h2>
+        <p class="hint">변환 후 각 사진 옆의 다운로드 버튼으로 한 장씩 저장할 수 있습니다.</p>
         <div id="results" class="muted">사진을 선택하면 목록이 표시됩니다.</div>
         <div class="actions">
           <button class="btn" id="download" disabled>
-            줄인 사진 ZIP 다운로드
+            전체 사진 ZIP 다운로드
           </button>
         </div>
       </section>
@@ -372,12 +383,12 @@
       function safe(s) {
         return s.replace(/[^a-zA-Z0-9가-힣._()-]/g, '_');
       }
-      function outputName(file, index) {
+      function outputName(file, index, format) {
         const prefix = $('filenamePrefix').value.trim();
         const sourceBase = file.name.replace(/\.[^.]+$/, '');
         const base = safe(prefix || sourceBase).replace(/^[._-]+|[._-]+$/g, '') || 'photo';
         const number = String(index + 1).padStart(3, '0');
-        const extension = $('outputFormat').value === 'png' ? '.png' : '.jpg';
+        const extension = format === 'png' ? '.png' : '.jpg';
         return base + '_' + number + extension;
       }
       function updateFormatUI() {
@@ -752,16 +763,29 @@
           title.textContent = f.name;
           const stats = document.createElement('small');
           stats.textContent = '처리 중';
-          row.append(title, stats);
+          const details = document.createElement('div');
+          details.className = 'result-details';
+          details.append(title, stats);
+          row.append(details);
           $('results').append(row);
           try {
             const result = await shrink(f, w, t, format);
-            const name = outputName(f, i);
+            const name = outputName(f, i, format);
             output.push({
               name,
               blob: result.blob,
             });
             title.textContent = name;
+            const downloadButton = document.createElement('button');
+            downloadButton.className = 'btn secondary photo-download';
+            downloadButton.type = 'button';
+            downloadButton.textContent = (format === 'png' ? 'PNG' : 'JPG') + ' 다운로드';
+            downloadButton.setAttribute('aria-label', name + ' 다운로드');
+            downloadButton.onclick = () => {
+              downloadBlob(result.blob, name);
+              $('message').textContent = name + ' 다운로드가 시작되었습니다.';
+            };
+            row.append(downloadButton);
             stats.textContent =
               pretty(f.size) +
               ' → ' +
@@ -782,9 +806,19 @@
         $('process').disabled = false;
         $('download').disabled = !output.length;
         $('message').textContent =
-          output.length + '장 변환 완료. ' + format.toUpperCase() + ' 사진이 ZIP에 담겼습니다.';
+          output.length + '장 변환 완료. 사진 옆의 다운로드 버튼으로 한 장씩 저장하거나 전체 ZIP으로 받으세요.';
       };
       updateFormatUI();
+      function downloadBlob(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
       $('download').onclick = async () => {
         if (!output.length) return;
         if (typeof JSZip === 'undefined') {
@@ -798,14 +832,7 @@
           const zip = new JSZip();
           output.forEach(x => zip.file(x.name, x.blob));
           const blob = await zip.generateAsync({ type: 'blob' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'resized-photos.zip';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          downloadBlob(blob, 'resized-photos.zip');
           $('message').textContent = 'ZIP 다운로드가 시작되었습니다.';
         } catch (e) {
           $('message').textContent = 'ZIP 만들기에 실패했습니다.';
