@@ -271,9 +271,19 @@
               </select>
             </div>
             <div class="hint">
-              저장될 JPG 파일의 KB/MB 크기입니다. 가로×세로 픽셀 치수와는 다른 설정이며, 목표에 맞춰 화질과 크기를 조정합니다.
+              저장할 형식을 JPG로 선택하면 파일 용량 목표로 화질을 조정합니다. 가로×세로 픽셀 치수와는 다른 설정입니다.
             </div>
           </div>
+        </div>
+        <div class="filename-setting">
+          <label for="outputFormat">저장할 사진 형식</label>
+          <div class="field">
+            <select id="outputFormat" style="width: 100%">
+              <option value="jpeg" selected>JPG</option>
+              <option value="png">PNG</option>
+            </select>
+          </div>
+          <div id="formatHint" class="hint">JPG는 파일 용량 목표에 맞춰 화질을 조정합니다.</div>
         </div>
         <div class="filename-setting">
           <label for="outputAspect">저장할 사진 비율</label>
@@ -297,14 +307,12 @@
               autocomplete="off"
             />
           </div>
-          <div class="hint">
+          <div id="filenameHint" class="hint">
             입력하면 여행사진_001.jpg처럼 일괄 변경됩니다. 비워두면 원본 이름 뒤에 순번을 붙입니다.
           </div>
         </div>
         <p class="note">
-          원본 사진은 변경되지 않습니다. 목표 용량은 사진 종류에 따라 정확하게
-          맞추지 못할 수도 있습니다. 결과는 JPG로 저장됩니다. 투명한 부분은
-          흰색으로 처리됩니다.
+          원본 사진은 변경되지 않습니다. JPG 용량 목표는 사진 종류에 따라 정확하게 맞추지 못할 수 있습니다.
         </p>
         <div class="actions">
           <button class="btn" id="process">사진 한꺼번에 줄이기</button
@@ -369,8 +377,24 @@
         const sourceBase = file.name.replace(/\.[^.]+$/, '');
         const base = safe(prefix || sourceBase).replace(/^[._-]+|[._-]+$/g, '') || 'photo';
         const number = String(index + 1).padStart(3, '0');
-        return base + '_' + number + '.jpg';
+        const extension = $('outputFormat').value === 'png' ? '.png' : '.jpg';
+        return base + '_' + number + extension;
       }
+      function updateFormatUI() {
+        const isPng = $('outputFormat').value === 'png';
+        $('target').disabled = isPng;
+        $('unit').disabled = isPng;
+        $('filenameHint').textContent = isPng
+          ? '입력하면 여행사진_001.png처럼 일괄 변경됩니다. 비워두면 원본 이름 뒤에 순번을 붙입니다.'
+          : '입력하면 여행사진_001.jpg처럼 일괄 변경됩니다. 비워두면 원본 이름 뒤에 순번을 붙입니다.';
+        $('formatHint').textContent = isPng
+          ? 'PNG는 화질 저하 없이 저장되며, JPG 용량 목표는 적용되지 않습니다. 투명 배경을 유지합니다.'
+          : 'JPG는 파일 용량 목표에 맞춰 화질을 조정합니다.';
+        output = [];
+        $('download').disabled = true;
+        if (originals.length) $('results').textContent = '저장 형식이 바뀌었습니다. 사진 한꺼번에 줄이기를 다시 눌러 주세요.';
+      }
+      $('outputFormat').onchange = updateFormatUI;
       function selectedAspect() {
         const value = $('outputAspect').value;
         if (value === '4:3') return 4 / 3;
@@ -632,16 +656,16 @@
           URL.revokeObjectURL(url);
         }
       }
-      function jpeg(canvas, q) {
+      function canvasBlob(canvas, type, q) {
         return new Promise((ok, fail) =>
           canvas.toBlob(
             b => (b ? ok(b) : fail(new Error('변환 실패'))),
-            'image/jpeg',
+            type,
             q
           )
         );
       }
-      async function shrink(file, maxWidth, limit) {
+      async function shrink(file, maxWidth, limit, format) {
         const im = await loadImage(file);
         const crop = cropRectFor(file, im.naturalWidth, im.naturalHeight);
         let w = Math.min(crop.width, maxWidth),
@@ -652,8 +676,10 @@
         for (let step = 0; step < 12; step++) {
           canvas.width = w;
           canvas.height = h;
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(0, 0, w, h);
+          if (format === 'jpeg') {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, w, h);
+          }
           ctx.drawImage(
             im,
             crop.x,
@@ -665,14 +691,18 @@
             w,
             h
           );
+          if (format === 'png') {
+            const blob = await canvasBlob(canvas, 'image/png');
+            return { blob, w, h, met: true };
+          }
           let lo = 0.3,
             hi = 0.94;
-          let candidate = await jpeg(canvas, lo);
+          let candidate = await canvasBlob(canvas, 'image/jpeg', lo);
           if (candidate.size <= limit) {
             best = candidate;
             for (let j = 0; j < 8; j++) {
               const mid = (lo + hi) / 2,
-                b = await jpeg(canvas, mid);
+                b = await canvasBlob(canvas, 'image/jpeg', mid);
               if (b.size <= limit) {
                 best = b;
                 lo = mid;
@@ -694,14 +724,14 @@
           $('message').textContent = '사진을 먼저 선택해 주세요.';
           return;
         }
-        const w = Number($('width').value),
+        const format = $('outputFormat').value,
+          w = Number($('width').value),
           t = Number($('target').value) * Number($('unit').value);
         if (
           !Number.isInteger(w) ||
           w < 1 ||
           w > 12000 ||
-          !Number.isFinite(t) ||
-          t < 1024
+          (format === 'jpeg' && (!Number.isFinite(t) || t < 1024))
         ) {
           $('message').textContent =
             '가로 크기와 목표 용량을 올바르게 입력해 주세요.';
@@ -725,7 +755,7 @@
           row.append(title, stats);
           $('results').append(row);
           try {
-            const result = await shrink(f, w, t);
+            const result = await shrink(f, w, t, format);
             const name = outputName(f, i);
             output.push({
               name,
@@ -752,8 +782,9 @@
         $('process').disabled = false;
         $('download').disabled = !output.length;
         $('message').textContent =
-          output.length + '장 변환 완료. ZIP 다운로드를 누르세요.';
+          output.length + '장 변환 완료. ' + format.toUpperCase() + ' 사진이 ZIP에 담겼습니다.';
       };
+      updateFormatUI();
       $('download').onclick = async () => {
         if (!output.length) return;
         if (typeof JSZip === 'undefined') {
